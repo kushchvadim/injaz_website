@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { Mail, Phone, MapPin, Clock, ArrowRight, MessageCircle, Instagram, Linkedin } from 'lucide-react';
 
@@ -63,6 +64,34 @@ const contactDetails = [
 ];
 
 export default function ContactPage() {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const name = formData.get('name')?.toString().trim() ?? '';
+    const email = formData.get('email')?.toString().trim() ?? '';
+    const organization = formData.get('organization')?.toString().trim() ?? '';
+    const message = formData.get('message')?.toString().trim() ?? '';
+
+    const subjectSuffix = name ? ` from ${name}` : '';
+    const subject = `SponsorSeek inquiry${subjectSuffix}`;
+
+    const bodyLines = [
+      name && `Name: ${name}`,
+      email && `Email: ${email}`,
+      organization && `Organization: ${organization}`,
+      message && `Message:\n${message}`,
+    ].filter(Boolean);
+
+    const params = new URLSearchParams({ subject });
+    if (bodyLines.length > 0) {
+      params.set('body', bodyLines.join('\n'));
+    }
+
+    window.location.href = `mailto:sponsorseek.ceo@gmail.com?${params.toString()}`;
+    event.currentTarget.reset();
+  };
+
   return (
     <main className="min-h-screen">
       <NavBar />
@@ -134,7 +163,7 @@ export default function ContactPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <form className="space-y-4">
+                <form className="space-y-4" onSubmit={handleSubmit}>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="name">Full name</Label>
@@ -184,7 +213,7 @@ export default function ContactPage() {
                 metrics tailored to your objectives.
               </p>
             </div>
-            <Link href="mailto:hello@sponsorseek.com">
+            <Link href="mailto:sponsorseek.ceo@gmail.com">
               <Button size="lg" className="glow-green-sm">
                 Schedule a call
               </Button>
