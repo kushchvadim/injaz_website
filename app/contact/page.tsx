@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Mail, Phone, MapPin, Clock, ArrowRight } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, ArrowRight, MessageCircle, Instagram, Linkedin } from 'lucide-react';
 
 import { NavBar } from '@/components/NavBar';
 import { Footer } from '@/components/Footer';
@@ -17,27 +17,48 @@ const contactDetails = [
     icon: Mail,
     title: 'Email',
     description: 'Reach our partnerships team anytime.',
-    value: 'hello@sponsorseek.com',
-    href: 'mailto:hello@sponsorseek.com',
+    value: 'sponsorseek.ceo@gmail.com',
+    href: 'mailto:sponsorseek.ceo@gmail.com',
   },
   {
     icon: Phone,
     title: 'Phone',
     description: 'Chat with us Monday to Friday, 9am – 5pm.',
-    value: '+971 4 123 4567',
-    href: 'tel:+97141234567',
+    value: '+971 58 556 6863',
+    href: 'tel:+971585566863',
   },
   {
     icon: MapPin,
     title: 'Location',
-    description: 'Dubai Internet City, Building 8, Level 4.',
-    value: 'Dubai, United Arab Emirates',
+    description: 'Our headquarters in the UAE.',
+    value: 'Dubai, UAE',
   },
   {
     icon: Clock,
     title: 'Response Time',
     description: 'We aim to respond within one business day.',
     value: '24 hours',
+  },
+  {
+    icon: MessageCircle,
+    title: 'WhatsApp',
+    description: 'Message us directly for quick responses.',
+    value: '+91 97100 00528',
+    href: 'https://wa.me/919710000528',
+  },
+  {
+    icon: Instagram,
+    title: 'Instagram',
+    description: 'Follow our latest sponsorship stories.',
+    value: 'instagram.com/sponsorseek',
+    href: 'https://instagram.com/sponsorseek',
+  },
+  {
+    icon: Linkedin,
+    title: 'LinkedIn',
+    description: 'Connect with us for professional updates.',
+    value: 'linkedin.com/in/sponsor-seek-609a62389',
+    href: 'https://ae.linkedin.com/in/sponsor-seek-609a62389',
   },
 ];
 
@@ -124,15 +145,9 @@ export default function ContactPage() {
                       <Input id="email" name="email" type="email" placeholder="you@company.com" required />
                     </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="organization">Organization</Label>
-                      <Input id="organization" name="organization" placeholder="Company or initiative" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="budget">Estimated budget</Label>
-                      <Input id="budget" name="budget" placeholder="AED 25,000" />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="organization">Organization</Label>
+                    <Input id="organization" name="organization" placeholder="Company or initiative" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="message">How can we help?</Label>
