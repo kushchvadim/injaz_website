@@ -115,7 +115,7 @@ export function RequestConnectModal({ isOpen, onClose, opportunityTitle }: Reque
               type="tel"
               value={formData.phone}
               onChange={(e) => handleChange('phone', e.target.value)}
-              placeholder="+971 XX XXX XXXX"
+              placeholder="+971 50 756 2271"
               className={errors.phone ? 'border-destructive' : ''}
             />
             {errors.phone && <p className="mt-1 text-xs text-destructive">{errors.phone}</p>}
