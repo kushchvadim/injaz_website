@@ -25,8 +25,8 @@ const contactDetails = [
     icon: Phone,
     title: 'Phone',
     description: 'Chat with us Monday to Friday, 9am – 5pm.',
-    value: '+971 58 556 6863',
-    href: 'tel:+971585566863',
+    value: '+971 50 756 2271',
+    href: 'tel:+971507562271',
   },
   {
     icon: MapPin,
@@ -44,8 +44,8 @@ const contactDetails = [
     icon: MessageCircle,
     title: 'WhatsApp',
     description: 'Message us directly for quick responses.',
-    value: '+91 97100 00528',
-    href: 'https://wa.me/919710000528',
+    value: '+971 50 756 2271',
+    href: 'https://wa.me/971507562271',
   },
   {
     icon: Instagram,
