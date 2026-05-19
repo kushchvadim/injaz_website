@@ -25,8 +25,8 @@ const contactDetails = [
     icon: Phone,
     title: 'Phone',
     description: 'Chat with us Monday to Friday, 9am – 5pm.',
-    value: '+971 50 756 2271',
-    href: 'tel:+971507562271',
+    value: '(04) 265 0792',
+    href: 'tel:+97142650792',
   },
   {
     icon: MapPin,
