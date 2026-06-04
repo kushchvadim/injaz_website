@@ -13,7 +13,7 @@ A sleek sponsorship connection platform that helps brands discover and support s
 ## Features
 
 - Browse student projects and community competitions
-- AI-powered SeekBot filter assistant
+- AI-powered SeekBot chat assistant
 - Detailed opportunity modals
 - Request to connect functionality
 - Fully responsive design
@@ -49,7 +49,7 @@ npm run build
 │   ├── Hero.tsx
 │   ├── HowItWorks.tsx
 │   ├── OpportunityCard.tsx
-│   ├── SeekBotPanel.tsx
+│   ├── SeekBotChat.tsx
 │   ├── DetailsModal.tsx
 │   ├── RequestConnectModal.tsx
 │   └── ui/                   # shadcn/ui components
@@ -60,9 +60,25 @@ npm run build
 
 ## Demo Notes
 
-- All data is mocked (no backend)
+- Sponsorship data is static demo data, with SeekBot served through a Netlify Function
 - Form submissions show success toast (no network calls)
-- SeekBot filtering is frontend tag-based
+- SeekBot chat calls the server-side Netlify Function at `/api/seekbot`
 - Commission note is visual only
 
 © 2025 SponsorSeek. Demo at GITEX.
+
+## SeekBot backend manual test
+
+The Netlify Function is exposed at `POST /api/seekbot` and expects `OPENAI_API_KEY` to be configured server-side. Optional environment variables are `SEEKBOT_MODEL` and `SEEKBOT_TIMEOUT_MS`.
+
+```bash
+# Run the Next.js site and Netlify Function locally
+OPENAI_API_KEY=your_server_side_key npx netlify-cli dev
+
+# In another terminal, call SeekBot through the Netlify Function
+curl -X POST http://localhost:8888/api/seekbot \
+  -H "Content-Type: application/json" \
+  -d '{"message":"We are a bank targeting university students in Dubai with CSR goals","messages":[]}'
+```
+
+Expected response: HTTP 200 with JSON containing `reply`, `cards`, `suggested_questions`, and `meta`. Any returned card IDs should exist in `src/data/opportunities.json`.
