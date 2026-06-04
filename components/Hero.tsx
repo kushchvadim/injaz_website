@@ -51,9 +51,9 @@ export function Hero() {
                 <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>
-            <Link href="/#how-it-works">
+            <Link href="/opportunities#seekbot">
               <Button size="lg" variant="outline">
-                Learn How It Works
+                Try SeekBot
               </Button>
             </Link>
           </motion.div>

@@ -5,12 +5,11 @@ import { motion } from 'framer-motion';
 import { NavBar } from '@/components/NavBar';
 import { Footer } from '@/components/Footer';
 import { OpportunityCard } from '@/components/OpportunityCard';
-import { SeekBotPanel } from '@/components/SeekBotPanel';
+import { SeekBotChat } from '@/components/SeekBotChat';
 import { DetailsModal } from '@/components/DetailsModal';
 import { RequestConnectModal } from '@/components/RequestConnectModal';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Bot, X } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { studentProjects, communityCompetitions, type StudentProject, type CommunityCompetition } from '@/lib/data';
 
 type Category = 'projects' | 'competitions';
@@ -18,21 +17,13 @@ type OpportunityType = StudentProject | CommunityCompetition;
 
 export default function OpportunitiesPage() {
   const [category, setCategory] = useState<Category>('projects');
-  const [seekBotOpen, setSeekBotOpen] = useState(false);
-  const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<OpportunityType | null>(null);
 
   const opportunities = category === 'projects' ? studentProjects : communityCompetitions;
 
-  const filteredOpportunities = selectedGoal
-    ? opportunities.filter((opp) => opp.tags.includes(selectedGoal))
-    : opportunities;
-
-  const handleSelectGoal = (goal: string) => {
-    setSelectedGoal(goal === selectedGoal ? null : goal);
-  };
+  const filteredOpportunities = opportunities;
 
   const handleDetails = (opportunity: OpportunityType) => {
     setSelectedOpportunity(opportunity);
@@ -82,31 +73,16 @@ export default function OpportunitiesPage() {
           <Button
             variant="outline"
             className="border-primary/50 hover:bg-primary/10"
-            onClick={() => setSeekBotOpen(true)}
+            onClick={() => document.getElementById('seekbot')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           >
             <Bot className="mr-2 h-4 w-4" />
             Ask SeekBot
           </Button>
         </div>
 
-        {selectedGoal && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 flex items-center gap-2"
-          >
-            <Badge variant="secondary" className="text-sm">
-              Filtered by: {selectedGoal}
-              <button
-                onClick={() => setSelectedGoal(null)}
-                className="ml-2 hover:text-destructive"
-                aria-label="Clear filter"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          </motion.div>
-        )}
+        <div className="mb-10">
+          <SeekBotChat />
+        </div>
 
         <div className="mb-8 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <p className="text-sm text-foreground/80">
@@ -142,13 +118,6 @@ export default function OpportunitiesPage() {
       </div>
 
       <Footer />
-
-      <SeekBotPanel
-        isOpen={seekBotOpen}
-        onClose={() => setSeekBotOpen(false)}
-        selectedGoal={selectedGoal}
-        onSelectGoal={handleSelectGoal}
-      />
 
       <DetailsModal
         isOpen={detailsModalOpen}
