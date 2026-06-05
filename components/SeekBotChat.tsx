@@ -2,14 +2,19 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Bookmark, BookmarkCheck, Bot, Loader2, RefreshCcw, Send, Sparkles, Trash2, UserRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { OpportunityModal } from '@/components/OpportunityModal';
 import { cn } from '@/lib/utils';
+import { formatBudgetRange, formatReach, getOpportunityById } from '@/src/lib/opportunities/catalog';
+import { useShortlist } from '@/src/lib/opportunities/shortlist';
+import { buildSponsorshipPlanPrompt } from '@/src/lib/seekbot/sponsorship_plan';
+import { buildSeekBotStartSearchPrompt, type SeekBotSponsorProfile } from '@/src/lib/seekbot/start_search';
 import type { SeekBotCard, SeekBotResponse } from '@/src/lib/seekbot/types';
 
 type ChatRole = 'user' | 'assistant';
@@ -17,17 +22,62 @@ type ChatRole = 'user' | 'assistant';
 interface SeekBotChatMessage {
   role: ChatRole;
   content: string;
+  apiContent?: string;
   cards?: SeekBotCard[];
   createdAt: string;
 }
 
+interface SendMessageOptions {
+  displayContent?: string;
+  initialProfileSearch?: boolean;
+}
+
+interface StarterProfile {
+  label: string;
+  profile: SeekBotSponsorProfile;
+}
+
 const MESSAGES_KEY = 'seekbot_messages';
-const LAST_CARDS_KEY = 'seekbot_last_cards';
 const SESSION_ID_KEY = 'seekbot_session_id';
-const STARTER_PROMPTS = [
-  'We are a bank targeting university students in Dubai with CSR goals.',
-  'Find youth sports sponsorship opportunities with strong local visibility.',
-  'We want to support education and entrepreneurship events in the UAE.',
+const PROFILE_KEY = 'seekbot_sponsor_profile';
+const EMPTY_PROFILE: SeekBotSponsorProfile = {
+  audience: '',
+  budget: '',
+  location: '',
+  goals: '',
+  businessType: '',
+};
+const STARTER_PROFILES: StarterProfile[] = [
+  {
+    label: 'Bank + university CSR',
+    profile: {
+      businessType: 'Bank or financial services sponsor',
+      audience: 'University students and young professionals',
+      budget: 'AED 25,000–75,000',
+      location: 'Dubai, UAE',
+      goals: 'CSR impact, financial literacy, youth engagement, and trusted brand visibility',
+    },
+  },
+  {
+    label: 'Local sports visibility',
+    profile: {
+      businessType: 'Consumer brand looking for family-friendly community visibility',
+      audience: 'Youth athletes, parents, families, and local community members',
+      budget: 'AED 10,000–40,000',
+      location: 'UAE, preferably Dubai or Abu Dhabi',
+      goals: 'Local visibility, community goodwill, youth sports support, and practical sponsorship value',
+    },
+  },
+  {
+    label: 'Education + entrepreneurship',
+    profile: {
+      businessType: 'Technology or innovation-focused company',
+      audience: 'Students, young entrepreneurs, startup founders, and educators',
+      budget: 'AED 30,000–100,000',
+      location: 'UAE-wide',
+      goals: 'Education, entrepreneurship, STEM talent, mentorship, and recruitment visibility',
+    },
+  },
 ];
 
 function createSessionId(): string {
@@ -73,8 +123,8 @@ export function getOrCreateSeekbotSessionId(): string {
 export function clearSeekbotSession(): void {
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(MESSAGES_KEY);
-    window.localStorage.removeItem(LAST_CARDS_KEY);
     window.localStorage.removeItem(SESSION_ID_KEY);
+    window.localStorage.removeItem(PROFILE_KEY);
   }
   clearCookie(SESSION_ID_KEY);
 }
@@ -95,6 +145,7 @@ function readStoredMessages(): SeekBotChatMessage[] {
       .map((message) => ({
         role: message.role,
         content: message.content.slice(0, 4000),
+        apiContent: typeof message.apiContent === 'string' ? message.apiContent.slice(0, 4000) : undefined,
         cards: Array.isArray(message.cards) ? message.cards.slice(0, 5) : undefined,
         createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date().toISOString(),
       }))
@@ -104,10 +155,56 @@ function readStoredMessages(): SeekBotChatMessage[] {
   }
 }
 
+function readStoredProfile(): SeekBotSponsorProfile | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PROFILE_KEY) || 'null') as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const record = parsed as Record<string, unknown>;
+
+    return {
+      audience: typeof record.audience === 'string' ? record.audience.slice(0, 500) : '',
+      budget: typeof record.budget === 'string' ? record.budget.slice(0, 250) : '',
+      location: typeof record.location === 'string' ? record.location.slice(0, 250) : '',
+      goals: typeof record.goals === 'string' ? record.goals.slice(0, 700) : '',
+      businessType: typeof record.businessType === 'string' ? record.businessType.slice(0, 300) : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
 function isSeekBotResponse(value: unknown): value is Partial<SeekBotResponse> & { reply: string } {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   return typeof record.reply === 'string';
+}
+
+function hasProfileInput(profile: SeekBotSponsorProfile): boolean {
+  return Object.values(profile).some((value) => value.trim().length > 0);
+}
+
+function summarizeProfile(profile: SeekBotSponsorProfile): string {
+  const parts = [
+    profile.businessType && `business type: ${profile.businessType.trim()}`,
+    profile.audience && `audience: ${profile.audience.trim()}`,
+    profile.budget && `budget: ${profile.budget.trim()}`,
+    profile.location && `location: ${profile.location.trim()}`,
+    profile.goals && `goals: ${profile.goals.trim()}`,
+  ].filter(Boolean);
+
+  return `Use my sponsor profile to find the 3 best opportunity matches${parts.length > 0 ? ` (${parts.join('; ')})` : ''}.`;
+}
+
+function profileFields(profile: SeekBotSponsorProfile): Array<{ label: string; value: string }> {
+  return [
+    { label: 'Business type', value: profile.businessType },
+    { label: 'Audience', value: profile.audience },
+    { label: 'Budget', value: profile.budget },
+    { label: 'Location', value: profile.location },
+    { label: 'Goals', value: profile.goals },
+  ];
 }
 
 interface RecommendationCardProps {
@@ -116,6 +213,8 @@ interface RecommendationCardProps {
 }
 
 function RecommendationCard({ card, onOpen }: RecommendationCardProps) {
+  const { isShortlisted, toggleShortlist } = useShortlist();
+  const shortlisted = isShortlisted(card.id);
   return (
     <Card className="border-primary/20 bg-background/80 transition-all hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10">
       <CardHeader className="space-y-3 pb-3">
@@ -139,9 +238,15 @@ function RecommendationCard({ card, onOpen }: RecommendationCardProps) {
             <p className="font-medium">{card.suggested_budget}</p>
           </div>
         </div>
-        <Button className="w-full" onClick={() => onOpen(card)}>
-          {card.cta_label || 'View opportunity'}
-        </Button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button className="w-full" onClick={() => onOpen(card)}>
+            {card.cta_label || 'View opportunity'}
+          </Button>
+          <Button variant={shortlisted ? 'secondary' : 'outline'} className="w-full" onClick={() => toggleShortlist(card.id)}>
+            {shortlisted ? <BookmarkCheck className="mr-2 h-4 w-4" /> : <Bookmark className="mr-2 h-4 w-4" />}
+            {shortlisted ? 'Shortlisted' : 'Shortlist'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -155,16 +260,24 @@ export function SeekBotChat() {
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [selectedCard, setSelectedCard] = useState<SeekBotCard | null>(null);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [profile, setProfile] = useState<SeekBotSponsorProfile | null>(null);
+  const [profileDraft, setProfileDraft] = useState<SeekBotSponsorProfile>(EMPTY_PROFILE);
+  const { shortlistedIds, removeFromShortlist, clearShortlist } = useShortlist();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const lastCards = useMemo(
-    () => messages.flatMap((message) => message.cards ?? []).slice(-5),
-    [messages],
+  const shortlistedOpportunities = useMemo(
+    () => shortlistedIds.map((id) => getOpportunityById(id)).filter((opportunity): opportunity is NonNullable<typeof opportunity> => Boolean(opportunity)),
+    [shortlistedIds],
   );
 
   useEffect(() => {
     setSessionId(getOrCreateSeekbotSessionId());
     setMessages(readStoredMessages());
+    const storedProfile = readStoredProfile();
+    if (storedProfile) {
+      setProfile(storedProfile);
+      setProfileDraft(storedProfile);
+    }
     setHasHydrated(true);
   }, []);
 
@@ -179,25 +292,26 @@ export function SeekBotChat() {
 
   useEffect(() => {
     if (!hasHydrated || typeof window === 'undefined') return;
-    if (lastCards.length === 0) {
-      window.localStorage.removeItem(LAST_CARDS_KEY);
+    if (!profile) {
+      window.localStorage.removeItem(PROFILE_KEY);
       return;
     }
-    window.localStorage.setItem(LAST_CARDS_KEY, JSON.stringify(lastCards));
-  }, [hasHydrated, lastCards]);
+    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  }, [hasHydrated, profile]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isLoading]);
 
-  async function sendMessage(rawMessage?: string): Promise<void> {
+  async function sendMessage(rawMessage?: string, options: SendMessageOptions = {}): Promise<void> {
     const currentMessage = (rawMessage ?? input).trim().slice(0, 2000);
     if (!currentMessage || isLoading) return;
 
     const previousMessages = messages;
     const userMessage: SeekBotChatMessage = {
       role: 'user',
-      content: currentMessage,
+      content: (options.displayContent ?? currentMessage).slice(0, 4000),
+      apiContent: options.displayContent ? currentMessage : undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -212,7 +326,7 @@ export function SeekBotChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: currentMessage,
-          messages: previousMessages.slice(-20).map(({ role, content }) => ({ role, content })),
+          messages: previousMessages.slice(-20).map(({ role, content, apiContent }) => ({ role, content: apiContent ?? content })),
           clientContext: {
             sessionId: sessionId || getOrCreateSeekbotSessionId(),
             cookieConsent: true,
@@ -225,10 +339,11 @@ export function SeekBotChat() {
         throw new Error('Invalid SeekBot response');
       }
 
+      const cardLimit = options.initialProfileSearch ? 3 : 5;
       const assistantMessage: SeekBotChatMessage = {
         role: 'assistant',
         content: payload.reply,
-        cards: Array.isArray(payload.cards) ? payload.cards.slice(0, 5) : [],
+        cards: Array.isArray(payload.cards) ? payload.cards.slice(0, cardLimit) : [],
         createdAt: new Date().toISOString(),
       };
 
@@ -254,12 +369,46 @@ export function SeekBotChat() {
     void sendMessage();
   }
 
+  function handleProfileSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!hasProfileInput(profileDraft) || isLoading) return;
+
+    const confirmedProfile = {
+      audience: profileDraft.audience.trim().slice(0, 500),
+      budget: profileDraft.budget.trim().slice(0, 250),
+      location: profileDraft.location.trim().slice(0, 250),
+      goals: profileDraft.goals.trim().slice(0, 700),
+      businessType: profileDraft.businessType.trim().slice(0, 300),
+    };
+
+    setProfile(confirmedProfile);
+    void sendMessage(buildSeekBotStartSearchPrompt(confirmedProfile), {
+      displayContent: summarizeProfile(confirmedProfile),
+      initialProfileSearch: true,
+    });
+  }
+
+  function handleBuildSponsorshipPlan(): void {
+    if (shortlistedOpportunities.length === 0 || isLoading) return;
+
+    const planPrompt = buildSponsorshipPlanPrompt(profile, shortlistedOpportunities);
+    void sendMessage(planPrompt, {
+      displayContent: `Build a sponsorship plan for ${shortlistedOpportunities.length} shortlisted ${shortlistedOpportunities.length === 1 ? 'opportunity' : 'opportunities'}.`,
+    });
+  }
+
   function handleClearChat(): void {
     clearSeekbotSession();
     setSessionId('');
     setMessages([]);
     setSuggestedQuestions([]);
     setInput('');
+    setProfile(null);
+    setProfileDraft(EMPTY_PROFILE);
+  }
+
+  function updateProfileDraft(field: keyof SeekBotSponsorProfile, value: string): void {
+    setProfileDraft((current) => ({ ...current, [field]: value }));
   }
 
   return (
@@ -271,13 +420,13 @@ export function SeekBotChat() {
           </div>
           <div>
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-bold tracking-tight">Try SeekBot</h2>
+              <h2 className="text-2xl font-bold tracking-tight">Start Sponsorship Search</h2>
               <Badge variant="outline" className="border-primary/50 text-primary">
                 AI sponsorship strategist
               </Badge>
             </div>
             <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
-              Describe your sponsor profile, audience, budget, or impact goal. SeekBot searches real demo opportunities through the secure backend and returns matched cards.
+              Start with a sponsor profile so SeekBot can search real demo opportunities, return the top 3 strongest matches, and keep refining through chat.
             </p>
           </div>
         </div>
@@ -287,34 +436,138 @@ export function SeekBotChat() {
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <aside className="space-y-4">
+          {profile ? (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Your Profile</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {profileFields(profile).map(({ label, value }) => (
+                  <div key={label} className="rounded-lg border border-primary/15 bg-background/70 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-sm leading-relaxed">{value || 'Not specified'}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-center gap-2 font-medium">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Profile first
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Fill the profile to automatically start a top-3 SeekBot search. You can still refine with free-form chat afterwards.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </aside>
+
         <Card className="min-h-[640px] border-border/60 bg-background/70">
           <CardContent className="flex h-full min-h-[640px] flex-col p-0">
             <ScrollArea className="h-[460px] flex-1 p-4 md:p-6">
               <div className="space-y-5">
                 {messages.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-5">
+                  <form onSubmit={handleProfileSubmit} className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-5">
                     <div className="mb-3 flex items-center gap-2 font-medium">
                       <Sparkles className="h-4 w-4 text-primary" />
-                      Start with a sponsorship objective
+                      Let&apos;s define your sponsor profile
                     </div>
                     <p className="mb-4 text-sm text-muted-foreground">
-                      Try one of these prompts or write your own request.
+                      Tell SeekBot who you are trying to reach and what success looks like. Confirming this starts the same chat engine with a structured top-3 search prompt.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {STARTER_PROMPTS.map((prompt) => (
-                        <button
-                          key={prompt}
-                          type="button"
-                          className="rounded-full border border-border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/50 hover:bg-primary/10"
-                          onClick={() => void sendMessage(prompt)}
+
+                    <div className="mb-5 grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor="seekbot-business-type">
+                          Business type
+                        </label>
+                        <Input
+                          id="seekbot-business-type"
+                          value={profileDraft.businessType}
+                          onChange={(event) => updateProfileDraft('businessType', event.target.value.slice(0, 300))}
+                          placeholder="e.g. Bank, telco, tech employer"
                           disabled={isLoading}
-                        >
-                          {prompt}
-                        </button>
-                      ))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor="seekbot-location">
+                          Location
+                        </label>
+                        <Input
+                          id="seekbot-location"
+                          value={profileDraft.location}
+                          onChange={(event) => updateProfileDraft('location', event.target.value.slice(0, 250))}
+                          placeholder="e.g. Dubai, Abu Dhabi, UAE-wide"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor="seekbot-budget">
+                          Budget
+                        </label>
+                        <Input
+                          id="seekbot-budget"
+                          value={profileDraft.budget}
+                          onChange={(event) => updateProfileDraft('budget', event.target.value.slice(0, 250))}
+                          placeholder="e.g. AED 25,000–75,000"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor="seekbot-audience">
+                          Target audience
+                        </label>
+                        <Textarea
+                          id="seekbot-audience"
+                          value={profileDraft.audience}
+                          onChange={(event) => updateProfileDraft('audience', event.target.value.slice(0, 500))}
+                          placeholder="e.g. University students, youth athletes, parents"
+                          className="min-h-[82px] resize-none"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor="seekbot-goals">
+                          Goals
+                        </label>
+                        <Textarea
+                          id="seekbot-goals"
+                          value={profileDraft.goals}
+                          onChange={(event) => updateProfileDraft('goals', event.target.value.slice(0, 700))}
+                          placeholder="e.g. CSR impact, local visibility, recruitment, youth engagement"
+                          className="min-h-[92px] resize-none"
+                          disabled={isLoading}
+                        />
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="mb-5">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Quick profile examples</p>
+                      <div className="flex flex-wrap gap-2">
+                        {STARTER_PROFILES.map((starter) => (
+                          <button
+                            key={starter.label}
+                            type="button"
+                            className="rounded-full border border-border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/50 hover:bg-primary/10"
+                            onClick={() => setProfileDraft(starter.profile)}
+                            disabled={isLoading}
+                          >
+                            {starter.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button type="submit" disabled={isLoading || !hasProfileInput(profileDraft)}>
+                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                      Confirm profile and start search
+                    </Button>
+                  </form>
                 )}
 
                 {messages.map((message, index) => (
@@ -394,9 +647,9 @@ export function SeekBotChat() {
                 <Textarea
                   value={input}
                   onChange={(event) => setInput(event.target.value.slice(0, 2000))}
-                  placeholder="Tell SeekBot what kind of sponsor or opportunity you’re looking for..."
+                  placeholder={profile ? 'Refine the recommendations, ask for comparisons, or request a different angle...' : 'Confirm your sponsor profile first, then use chat for follow-up refinement...'}
                   className="min-h-[72px] resize-none"
-                  disabled={isLoading}
+                  disabled={isLoading || messages.length === 0}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
@@ -404,14 +657,14 @@ export function SeekBotChat() {
                     }
                   }}
                 />
-                <Button type="submit" size="lg" className="md:self-end" disabled={isLoading || input.trim().length === 0}>
+                <Button type="submit" size="lg" className="md:self-end" disabled={isLoading || input.trim().length === 0 || messages.length === 0}>
                   {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   Send
                 </Button>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span>{input.length}/2000 characters</span>
-                <span>Only demo chat state is stored locally.</span>
+                <span>Only demo chat state and your sponsor profile are stored locally.</span>
               </div>
             </form>
           </CardContent>
@@ -419,40 +672,50 @@ export function SeekBotChat() {
 
         <aside className="space-y-4">
           <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-center gap-2 font-medium">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                Secure by design
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <CardTitle className="text-base">Shortlist</CardTitle>
+                {shortlistedOpportunities.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearShortlist} disabled={isLoading}>
+                    Clear
+                  </Button>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground">
-                The browser only calls <code className="rounded bg-background px-1">/api/seekbot</code>. OpenAI credentials stay server-side in the Netlify Function.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/60 bg-background/70">
-            <CardHeader>
-              <CardTitle className="text-base">Latest matched cards</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {lastCards.length > 0 ? (
-                lastCards.map((card, index) => (
-                  <button
-                    key={`${card.id}-${card.match_score}-${index}`}
-                    type="button"
-                    className="w-full rounded-xl border border-border bg-card p-3 text-left transition hover:border-primary/50"
-                    onClick={() => setSelectedCard(card)}
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="line-clamp-1 text-sm font-medium">{card.title}</span>
-                      <Badge variant="secondary" className="shrink-0">{card.match_score}%</Badge>
+              {shortlistedOpportunities.length > 0 ? (
+                shortlistedOpportunities.map((opportunity) => (
+                  <div key={opportunity.id} className="rounded-xl border border-border bg-card p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 text-sm font-medium">{opportunity.title}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 shrink-0 p-0"
+                        onClick={() => removeFromShortlist(opportunity.id)}
+                        disabled={isLoading}
+                        aria-label={`Remove ${opportunity.title} from shortlist`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <p className="line-clamp-2 text-xs text-muted-foreground">{card.suggested_budget}</p>
-                  </button>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p>{formatBudgetRange(opportunity)}</p>
+                      <p>{formatReach(opportunity)}</p>
+                    </div>
+                  </div>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">Your latest recommendations will appear here after SeekBot returns matches.</p>
+                <p className="text-sm text-muted-foreground">Shortlist manual opportunities or SeekBot cards to build a sponsorship plan.</p>
               )}
+
+              <Button className="w-full" onClick={handleBuildSponsorshipPlan} disabled={isLoading || shortlistedOpportunities.length === 0}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                Build Sponsorship Plan
+              </Button>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Plan generation uses your shortlist and the existing SeekBot chat route. Your OpenAI credentials stay server-side.
+              </p>
             </CardContent>
           </Card>
         </aside>
