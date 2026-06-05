@@ -53,7 +53,7 @@ export function Hero() {
             </Link>
             <Link href="/opportunities#seekbot">
               <Button size="lg" variant="outline">
-                Try SeekBot
+                Ask SeekBot
               </Button>
             </Link>
           </motion.div>
