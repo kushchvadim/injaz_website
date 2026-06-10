@@ -11,6 +11,7 @@ interface OpportunityModalProps {
   card: SeekBotCard | null;
   isOpen: boolean;
   onClose: () => void;
+  onConnect?: (opportunity: Opportunity | null, card: SeekBotCard) => void;
 }
 
 const opportunities = opportunitiesData as Opportunity[];
@@ -19,7 +20,7 @@ function formatCurrencyRange(opportunity: Opportunity): string {
   return `AED ${opportunity.budget_min.toLocaleString()} – AED ${opportunity.budget_max.toLocaleString()}`;
 }
 
-export function OpportunityModal({ card, isOpen, onClose }: OpportunityModalProps) {
+export function OpportunityModal({ card, isOpen, onClose, onConnect }: OpportunityModalProps) {
   if (!card) return null;
 
   const opportunity = opportunities.find((item) => item.id === card.id);
@@ -137,9 +138,19 @@ export function OpportunityModal({ card, isOpen, onClose }: OpportunityModalProp
             </>
           )}
 
-          <Button className="w-full" onClick={onClose}>
-            Close
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="w-full sm:flex-1" onClick={onClose}>
+              Close
+            </Button>
+            <Button
+              className="w-full sm:flex-1"
+              onClick={() => {
+                onConnect?.(opportunity ?? null, card);
+              }}
+            >
+              Request to Connect
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
