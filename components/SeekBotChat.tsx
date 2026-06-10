@@ -10,12 +10,13 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { OpportunityModal } from '@/components/OpportunityModal';
+import { RequestConnectModal } from '@/components/RequestConnectModal';
 import { cn } from '@/lib/utils';
 import { formatBudgetRange, formatReach, getOpportunityById } from '@/src/lib/opportunities/catalog';
 import { useShortlist } from '@/src/lib/opportunities/shortlist';
-import { buildSponsorshipPlanPrompt } from '@/src/lib/seekbot/sponsorship_plan';
+import { buildSponsorshipPlanDisplayMessage, buildSponsorshipPlanPrompt } from '@/src/lib/seekbot/sponsorship_plan';
 import { buildSeekBotStartSearchPrompt, type SeekBotSponsorProfile } from '@/src/lib/seekbot/start_search';
-import type { SeekBotCard, SeekBotResponse } from '@/src/lib/seekbot/types';
+import type { Opportunity, SeekBotCard, SeekBotResponse } from '@/src/lib/seekbot/types';
 
 type ChatRole = 'user' | 'assistant';
 
@@ -259,6 +260,8 @@ export function SeekBotChat() {
   const [sessionId, setSessionId] = useState('');
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [selectedCard, setSelectedCard] = useState<SeekBotCard | null>(null);
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [connectOpportunityTitle, setConnectOpportunityTitle] = useState('');
   const [hasHydrated, setHasHydrated] = useState(false);
   const [profile, setProfile] = useState<SeekBotSponsorProfile | null>(null);
   const [profileDraft, setProfileDraft] = useState<SeekBotSponsorProfile>(EMPTY_PROFILE);
@@ -304,7 +307,7 @@ export function SeekBotChat() {
   }, [messages, isLoading]);
 
   async function sendMessage(rawMessage?: string, options: SendMessageOptions = {}): Promise<void> {
-    const currentMessage = (rawMessage ?? input).trim().slice(0, 2000);
+    const currentMessage = (rawMessage ?? input).trim().slice(0, 4000);
     if (!currentMessage || isLoading) return;
 
     const previousMessages = messages;
@@ -393,8 +396,14 @@ export function SeekBotChat() {
 
     const planPrompt = buildSponsorshipPlanPrompt(profile, shortlistedOpportunities);
     void sendMessage(planPrompt, {
-      displayContent: `Build a sponsorship plan for ${shortlistedOpportunities.length} shortlisted ${shortlistedOpportunities.length === 1 ? 'opportunity' : 'opportunities'}.`,
+      displayContent: buildSponsorshipPlanDisplayMessage(shortlistedOpportunities),
     });
+  }
+
+  function handleConnectFromRecommendation(opportunity: Opportunity | null, card: SeekBotCard): void {
+    setConnectOpportunityTitle(opportunity?.title ?? card.title);
+    setSelectedCard(null);
+    setConnectModalOpen(true);
   }
 
   function handleClearChat(): void {
@@ -721,7 +730,17 @@ export function SeekBotChat() {
         </aside>
       </div>
 
-      <OpportunityModal card={selectedCard} isOpen={Boolean(selectedCard)} onClose={() => setSelectedCard(null)} />
+      <OpportunityModal
+        card={selectedCard}
+        isOpen={Boolean(selectedCard)}
+        onClose={() => setSelectedCard(null)}
+        onConnect={handleConnectFromRecommendation}
+      />
+      <RequestConnectModal
+        isOpen={connectModalOpen}
+        onClose={() => setConnectModalOpen(false)}
+        opportunityTitle={connectOpportunityTitle}
+      />
     </section>
   );
 }
